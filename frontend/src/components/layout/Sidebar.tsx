@@ -34,6 +34,7 @@ function LogoImage({ collapsed }: { collapsed: boolean }) {
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: DashboardIcon },
+  { href: "/attendance", label: "Attendance & Leave", icon: AttendanceIcon },
   { href: "/admin/users", label: "User Management", icon: UsersIcon },
   { href: "/admin/audit", label: "Audit Logs", icon: AuditIcon },
   { href: "/ai/policies", label: "AI Policies", icon: PolicyIcon },
@@ -99,6 +100,14 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
       stroke="currentColor"
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+    </svg>
+  );
+}
+
+function AttendanceIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
     </svg>
   );
 }
