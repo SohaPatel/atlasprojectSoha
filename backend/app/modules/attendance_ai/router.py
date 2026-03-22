@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import base64
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -8,7 +9,6 @@ from app.modules.attendance_ai.schemas import (
     AttendanceResponse,
     LeaveRequestCreate,
     LeaveRequestResponse,
-    AIAnalysisResponse,
 )
 from app.modules.attendance_ai.models import LeaveStatus
 from app.modules.attendance_ai.service import attendance_service
@@ -146,4 +146,93 @@ async def reject_leave(
             detail="Leave request not found.",
         )
     return {"message": "Leave rejected successfully", "leave": leave}
-    
+
+
+# ── Medical Certificate Verification ────────────────────────────
+
+@router.post("/verify-medical-certificate")
+async def verify_medical_certificate(
+    file: UploadFile = File(...),
+):
+    """Use AI to verify if uploaded file is a valid medical certificate."""
+    from app.services.ai.gemini import gemini_client
+    import google.generativeai as genai
+    from app.core.config import settings
+    import json
+
+    if not gemini_client.is_available():
+        return {
+            "is_valid": True,
+            "message": "AI verification unavailable. Please ensure the document is a valid medical certificate.",
+            "confidence": "LOW",
+            "detected_as": "Unknown"
+        }
+
+    try:
+        contents = await file.read()
+
+        filename = file.filename.lower()
+        if filename.endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif filename.endswith(".png"):
+            mime_type = "image/png"
+        elif filename.endswith((".jpg", ".jpeg")):
+            mime_type = "image/jpeg"
+        else:
+            return {
+                "is_valid": False,
+                "message": "Invalid file type. Please upload a PDF, JPG, or PNG file.",
+                "confidence": "HIGH",
+                "detected_as": "Invalid file type"
+            }
+
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+
+        prompt = """Look at this document carefully.
+
+Determine if this is a legitimate medical certificate or medical report issued by a doctor, hospital, or medical institution.
+
+A valid medical certificate should have:
+- Doctor's name, signature, or hospital letterhead
+- Patient information
+- Medical condition or diagnosis
+- Date of issue
+
+Respond in this exact JSON format only, no explanation:
+{
+    "is_medical_document": true or false,
+    "confidence": "HIGH" or "MEDIUM" or "LOW",
+    "reason": "brief explanation",
+    "detected_as": "what this document appears to be"
+}"""
+
+        response = model.generate_content([
+            {"mime_type": mime_type, "data": base64.b64encode(contents).decode()},
+            prompt
+        ])
+
+        clean = response.text.strip()
+        if clean.startswith("```json"):
+            clean = clean[7:]
+        if clean.startswith("```"):
+            clean = clean[3:]
+        if clean.endswith("```"):
+            clean = clean[:-3]
+
+        result = json.loads(clean.strip())
+
+        return {
+            "is_valid": result.get("is_medical_document", False),
+            "message": result.get("reason", ""),
+            "confidence": result.get("confidence", "LOW"),
+            "detected_as": result.get("detected_as", "Unknown document")
+        }
+
+    except Exception as e:
+        print(f"Medical certificate verification error: {e}")
+        return {
+            "is_valid": False,
+            "message": "Could not verify document. Please ensure it is a clear medical certificate.",
+            "confidence": "LOW",
+            "detected_as": "Unknown"
+        }
