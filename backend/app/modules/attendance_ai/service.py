@@ -110,6 +110,7 @@ class AttendanceService:
 
     async def create_leave_request(self, db: AsyncSession, data: LeaveRequestCreate) -> LeaveRequest:
         attendance_summary = await self.get_attendance_summary(db, data.student_id)
+        days_requested = (data.to_date - data.from_date).days + 1
         leave_data = {
             "student_id": data.student_id,
             "student_name": data.student_name,
@@ -117,6 +118,11 @@ class AttendanceService:
             "from_date": str(data.from_date),
             "to_date": str(data.to_date),
             "reason": data.reason,
+            "days_requested": days_requested,
+            "current_attendance_percentage": attendance_summary.get("overall_percentage", 0),
+            "total_classes": attendance_summary.get("total_classes", 0),
+            "present": attendance_summary.get("present", 0),
+            "absent": attendance_summary.get("absent", 0),
         }
         ai_result = await attendance_agent.analyze_leave_request(
             leave_data=leave_data,
@@ -167,4 +173,3 @@ class AttendanceService:
 
 
 attendance_service = AttendanceService()
-

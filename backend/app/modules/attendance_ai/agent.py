@@ -24,32 +24,41 @@ Provide your analysis in the following JSON format only, no explanation:
     "overall_percentage": <float>,
     "is_at_risk": <true|false>,
     "subjects_at_risk": ["subject1", "subject2"],
-    "ai_recommendation": "detailed recommendation for the student",
+    "ai_recommendation": "detailed recommendation for the student mentioning exact percentage",
     "suggested_action": "specific action to take"
 }}"""
 
     LEAVE_ANALYSIS_PROMPT = """You are an intelligent university leave management agent.
 
-Analyze the following leave request and attendance record:
+Analyze the following leave request and attendance record carefully.
 
-Leave Request:
+Leave Request Details:
 {leave_data}
 
 Student Attendance Summary:
 {attendance_data}
 
 University Leave Rules:
+- Minimum attendance required: 75%
 - Medical leaves are generally approved if supported by reason
-- Students with attendance below 75% need special consideration for leave
+- Students with attendance below 75% need special consideration
 - Leaves longer than 5 days need strong justification
 - Personal leaves are approved based on current attendance standing
+
+IMPORTANT INSTRUCTIONS:
+- You MUST mention the student's EXACT attendance percentage in your reason
+- You MUST mention the exact number of days requested
+- You MUST mention the leave type
+- Make the response feel personal and specific to THIS student
+- Example of good reason: "Student John has 62.5% attendance and is requesting 3 days of Medical leave. Approving this will drop attendance further below the critical 60% threshold."
+- Example of bad reason: "Student attendance is below 75%." (too generic)
 
 Provide your decision in the following JSON format only, no explanation:
 {{
     "recommendation": "APPROVE|REJECT|REVIEW",
     "risk_score": <float between 0 and 1, higher means more risky to approve>,
-    "reason": "detailed reason for the recommendation",
-    "conditions": "any conditions or notes for approval"
+    "reason": "personalised reason mentioning exact attendance percentage, leave type, and number of days",
+    "conditions": "specific conditions for this particular student"
 }}"""
 
     async def analyze_attendance(self, student_id: str, student_name: str, attendance_records: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -143,33 +152,37 @@ Provide your decision in the following JSON format only, no explanation:
             "is_at_risk": percentage < 75,
             "risk_level": risk_level,
             "subjects_at_risk": [],
-            "ai_recommendation": f"Student has {round(percentage, 2)}% attendance. {'Attendance is satisfactory.' if percentage >= 75 else 'Immediate improvement required.'}",
-            "suggested_action": "No action needed." if percentage >= 75 else "Please attend all remaining classes.",
+            "ai_recommendation": f"Student {student_name} has {round(percentage, 2)}% attendance out of {total} total classes. {'Attendance is satisfactory and above the 75% threshold.' if percentage >= 75 else f'Attendance is below the required 75% threshold. Student has been absent for {total - present} out of {total} classes.'}",
+            "suggested_action": "No action needed. Keep maintaining good attendance." if percentage >= 75 else f"Student must attend all remaining classes. Currently at {round(percentage, 2)}% which is {round(75 - percentage, 2)}% below the required threshold.",
         }
 
     def _get_demo_leave_recommendation(self, leave_data: Dict[str, Any], attendance_summary: Dict[str, Any]) -> Dict[str, Any]:
         percentage = attendance_summary.get("overall_percentage", 100)
         leave_type = leave_data.get("leave_type", "OTHER")
+        days_requested = leave_data.get("days_requested", 1)
+        student_name = leave_data.get("student_name", "Student")
+        total_classes = attendance_summary.get("total_classes", 0)
+
         if percentage < 75:
             return {
                 "recommendation": "REJECT",
                 "risk_score": 0.8,
-                "reason": "Student attendance is already below 75%. Approving leave will worsen the situation.",
-                "conditions": "Leave can only be approved with a medical certificate and HOD approval.",
+                "reason": f"{student_name} currently has {percentage}% attendance and is requesting {days_requested} day(s) of {leave_type} leave. With attendance already {round(75 - percentage, 2)}% below the required 75% threshold across {total_classes} total classes, approving this leave will worsen the situation significantly.",
+                "conditions": "Leave can only be approved with a medical certificate and HOD approval. Student must attend all remaining classes without exception.",
             }
         elif leave_type == "MEDICAL":
             return {
                 "recommendation": "APPROVE",
                 "risk_score": 0.2,
-                "reason": "Medical leave is valid. Student has satisfactory attendance.",
-                "conditions": "Please submit medical certificate within 3 days of returning.",
+                "reason": f"{student_name} has a healthy {percentage}% attendance and is requesting {days_requested} day(s) of medical leave. Given their strong attendance record and the medical nature of the request, this leave is recommended for approval.",
+                "conditions": "Please submit a valid medical certificate within 3 days of returning to college.",
             }
         else:
             return {
                 "recommendation": "APPROVE",
                 "risk_score": 0.3,
-                "reason": "Student has good attendance standing. Leave approved.",
-                "conditions": "Ensure all missed assignments are submitted on time.",
+                "reason": f"{student_name} currently has {percentage}% attendance which is above the required 75% threshold. Requesting {days_requested} day(s) of {leave_type} leave. Attendance standing is satisfactory for approval.",
+                "conditions": "Ensure all missed assignments and coursework are submitted on time after returning.",
             }
 
 
